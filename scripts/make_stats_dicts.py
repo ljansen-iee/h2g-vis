@@ -1,6 +1,3 @@
-
-import logging
-logger = logging.getLogger(__name__)
 from pathlib import Path
 import re
 import yaml
@@ -29,26 +26,30 @@ sdir.mkdir(exist_ok=True, parents=True)
 
 run_names = [
     "H2G_A_CD_2035",
-    "H2G_A_CD_2050",
-    # "H2G_A_EG_2035", 
+    "H2G_A_DZ_2035",
+    "H2G_A_EG_2035", 
+    "H2G_A_ET_2035",
+    "H2G_A_GH_2035",
+    "H2G_A_KE_2035",
+    "H2G_A_MA_2035",
+    "H2G_A_MR_2035",
+    "H2G_A_NA_2035",
+    "H2G_A_NG_2035",
+    "H2G_A_TN_2035",
+    "H2G_A_TZ_2035",
+    "H2G_A_ZA_2035", 
+    # "H2G_A_CD_2050",
+    # "H2G_A_DZ_2050",
     # "H2G_A_EG_2050", 
-    # "H2G_A_ET_2035",
     # "H2G_A_ET_2050",
-    # "H2G_A_GH_2035",
     # "H2G_A_GH_2050",
-    # "H2G_A_KE_2035",
     # "H2G_A_KE_2050",
-    # "H2G_A_MA_2035",
     # "H2G_A_MA_2050",
-    # "H2G_A_NA_2035",
+    # "H2G_A_MR_2050",
     # "H2G_A_NA_2050",
-    # "H2G_A_NG_2035",
     # "H2G_A_NG_2050",
-    # "H2G_A_TN_2035",
     # "H2G_A_TN_2050",
-    # "H2G_A_TZ_2035",
     # "H2G_A_TZ_2050",
-    # "H2G_A_ZA_2035", 
     # "H2G_A_ZA_2050"
 ]
 
@@ -168,6 +169,37 @@ if nc_files.empty:
 
 #%%
 
+def calculate_gwkm(n, selection=None, decimals=1, which="optimal"):
+    # from https://github.com/fneum/spatial-sector/blob/main/notebooks/single.py.ipynb
+    if selection is None:
+        selection = [
+            "H2 pipeline",
+            "H2 pipeline retrofitted",
+            "gas pipeline",
+            "gas pipeline new",
+            "DC",
+        ]
+
+    gwkm = n.links.loc[n.links.carrier.isin(selection)]
+
+    if which == "optimal":
+        link_request = "p_nom_opt"
+        line_request = "s_nom_opt"
+    elif which == "added":
+        link_request = "(p_nom_opt - p_nom)"
+        line_request = "(s_nom_opt - s_nom)"
+    elif which == "existing":
+        link_request = "p_nom"
+        line_request = "s_nom"
+
+    gwkm = gwkm.eval(f"length*{link_request}").groupby(gwkm.carrier).sum() / 1e3  # GWkm
+    gwkm["AC"] = n.lines.eval(f"length*{line_request}").sum() / 1e3  # GWkm
+
+    gwkm.index.name = None
+
+    return gwkm.round(decimals)
+
+
 # initialise dicts per metric (market balance, optimal capacities, costs, marginal prices) with dataframes per bus_carrier or other groups
 
 balance_dict = init_stats_dict(nc_files, keys=[
@@ -179,8 +211,13 @@ optimal_capacity_dict = init_stats_dict(nc_files, keys=["AC", "H2"], name="bus_c
 
 costs_dict = init_stats_dict(nc_files, keys=["capex", "opex"], name="costs")
 
-load_avg_marginal_price = pd.DataFrame(index=nc_files.index, columns=["H2 export bus"]) #"H2 export", , "FT export", "NH3 export"
-load_avg_marginal_price.columns.name = "bus" # NB: this is spatially resolved.
+marginal_prices = pd.DataFrame(index=nc_files.index, columns=["H2 export bus"]) #"H2 export", , "FT export", "NH3 export"
+marginal_prices.columns.name = "bus" # NB: this is spatially resolved.
+
+gwkm_dict = {
+    "AC": pd.DataFrame(index=nc_files.index, columns=["optimal", "added", "existing", "ratio"]),
+    "H2 pipeline": pd.DataFrame(index=nc_files.index, columns=["optimal", "added", "existing", "ratio"])
+}
 
 pypsa.options.params.statistics.nice_names = False
 pypsa.options.params.statistics.drop_zero = False
@@ -290,7 +327,14 @@ for nc_files_idx in nc_files.index:
         matching_buses = n.buses.index[n.buses.index.str.contains(bus_carrier)]
         for bus in matching_buses:
             if bus in prices_load_weighted.index:
-                load_avg_marginal_price.at[nc_files_idx, bus] = prices_load_weighted[bus]
+                marginal_prices.at[nc_files_idx, bus] = prices_load_weighted[bus]
+
+
+    df_gwkm = pd.DataFrame({key: calculate_gwkm(n, which=key) for key in ["optimal", "added", "existing"]})
+    df_gwkm["ratio"] = df_gwkm["added"] / df_gwkm["existing"].replace(0, pd.NA)
+    gwkm_dict["AC"].loc[nc_files_idx, :] = df_gwkm.loc["AC", ["optimal", "added", "existing", "ratio"]].values
+    gwkm_dict["H2 pipeline"].loc[nc_files_idx, :] = df_gwkm.loc["H2 pipeline", ["optimal", "added", "existing", "ratio"]].values
+
 
 
 # %%
@@ -300,8 +344,10 @@ save_stats_dict(balance_dict, "balance_dict", sdir)
 save_stats_dict(optimal_capacity_dict, "optimal_capacity_dict", sdir)
 save_stats_dict(costs_dict, "costs_dict", sdir)
 
-to_csv_nafix(load_avg_marginal_price, sdir / "load_avg_marginal_price.csv")
-print(f"Saved load_avg_marginal_price to {sdir / 'load_avg_marginal_price.csv'}")
+to_csv_nafix(marginal_prices, sdir / "marginal_prices.csv")
+print(f"Saved marginal_prices to {sdir / 'marginal_prices.csv'}")
+
+save_stats_dict(gwkm_dict, "gwkm_dict", sdir)
 
 # %%
 
