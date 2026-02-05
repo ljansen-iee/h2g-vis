@@ -92,12 +92,14 @@ def set_scen_col_H2G(df, index_levels_to_drop=[]):
     """
     df = df.copy()
     
-    demand_info = df["demand"]#.map({"Exp": ""})
+    country_info = df["country"]
+
+    # demand_info = df["demand"]#.map({"Exp": ""})
 
     # Add export info based on 'eopts', handling NaN and string values
-    export_info = df["h2export"].astype(str)
+    export_info = df["h2export"].astype(float).div(33.33).round(1).astype(str) + "MtH2export"
 
-    df["scen"] = demand_info + export_info
+    df["scen"] = country_info + "-" + export_info
 
     df = df.drop(columns=index_levels_to_drop) #"ll"
     #df["scen"] = df.apply(lambda row: "_".join([f"{col}_{row[col]}" for col in df.columns if col not in cols_to_ignore]), axis=1)
@@ -310,6 +312,13 @@ def get_supply_demand_from_balance(
 def update_layout(fig):
     # Only apply textangle and textposition to bar traces to avoid conflicts with scatter traces
     fig.update_traces(textposition='inside', textangle=0, selector=dict(type='bar'))
+    
+    # Set custom hovertemplate for bar traces to show variable name
+    fig.update_traces(
+        hovertemplate='<b>%{fullData.name}</b><br>Scenario: %{x}<br>Value: %{y:.2f}<extra></extra>',
+        selector=dict(type='bar')
+    )
+    
     fig.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1]))
     fig.update_xaxes(tickangle=25)
     # fig.update_yaxes(matches=None)
@@ -551,7 +560,8 @@ my_template = go.layout.Template(
         uniformtext_mode='hide',
         margin=dict(l=0, r=50, t=50, b=50),
         # margin=dict(l=15, r=0, t=80, b=0),
-))
+    )
+)
 
 pio.renderers.default = 'plotly_mimetype+notebook_connected'
 pio.templates["my"] = my_template
@@ -1378,7 +1388,7 @@ def load_plot_config(config_path: str = None):
     from pathlib import Path
     
     if config_path is None:
-        config_path = Path(__file__).parent / "plot_summary.yaml"
+        config_path = Path(__file__).parent.parent / "plot_summary.yaml"
     else:
         config_path = Path(config_path)
     
