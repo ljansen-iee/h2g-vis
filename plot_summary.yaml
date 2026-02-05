@@ -12,7 +12,7 @@ run:
 # DATA SELECTION
 # ============================================================================
 data:
-  countries: ['CD']  # Countries to plot: MA, EG, ZA
+  countries: ['CD', 'EG', 'ET', 'GH', 'KE', 'MA', 'MR', 'NA', 'NG', 'TN', 'TZ', 'ZA']
   years: [2035]      # Years to include in analysis
   
   # Index levels to drop from multiindex when creating scenario labels

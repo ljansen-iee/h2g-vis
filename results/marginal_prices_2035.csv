@@ -1,0 +1,27 @@
+,run_name_prefix,run_name,scen,year,country,variable,value
+165,scenarios_H2G,H2G_A_CD_2035,CD-0.1MtH2export,2035,CD,H2 export bus,116.7
+763,scenarios_H2G,H2G_A_EG_2035,EG-0.1MtH2export,2035,EG,H2 export bus,65.3
+1361,scenarios_H2G,H2G_A_EG_2035,EG-0.4MtH2export,2035,EG,H2 export bus,71.2
+1959,scenarios_H2G,H2G_A_EG_2035,EG-0.7MtH2export,2035,EG,H2 export bus,78.3
+2557,scenarios_H2G,H2G_A_ET_2035,ET-0.1MtH2export,2035,ET,H2 export bus,115.9
+3155,scenarios_H2G,H2G_A_ET_2035,ET-0.4MtH2export,2035,ET,H2 export bus,116.7
+3753,scenarios_H2G,H2G_A_ET_2035,ET-0.7MtH2export,2035,ET,H2 export bus,116.7
+4351,scenarios_H2G,H2G_A_GH_2035,GH-0.1MtH2export,2035,GH,H2 export bus,42.6
+4949,scenarios_H2G,H2G_A_GH_2035,GH-0.4MtH2export,2035,GH,H2 export bus,42.6
+5547,scenarios_H2G,H2G_A_GH_2035,GH-0.7MtH2export,2035,GH,H2 export bus,42.6
+6145,scenarios_H2G,H2G_A_KE_2035,KE-0.1MtH2export,2035,KE,H2 export bus,111.1
+6743,scenarios_H2G,H2G_A_MA_2035,MA-0.1MtH2export,2035,MA,H2 export bus,54.2
+7341,scenarios_H2G,H2G_A_MR_2035,MR-0.1MtH2export,2035,MR,H2 export bus,84.2
+7939,scenarios_H2G,H2G_A_NA_2035,NA-0.1MtH2export,2035,NA,H2 export bus,124.2
+8537,scenarios_H2G,H2G_A_NA_2035,NA-0.4MtH2export,2035,NA,H2 export bus,129.8
+9135,scenarios_H2G,H2G_A_NA_2035,NA-0.7MtH2export,2035,NA,H2 export bus,130.7
+9733,scenarios_H2G,H2G_A_NG_2035,NG-0.1MtH2export,2035,NG,H2 export bus,134.3
+10331,scenarios_H2G,H2G_A_NG_2035,NG-0.4MtH2export,2035,NG,H2 export bus,138.3
+10929,scenarios_H2G,H2G_A_NG_2035,NG-0.7MtH2export,2035,NG,H2 export bus,149.0
+11527,scenarios_H2G,H2G_A_TN_2035,TN-0.1MtH2export,2035,TN,H2 export bus,42.6
+12125,scenarios_H2G,H2G_A_TN_2035,TN-0.4MtH2export,2035,TN,H2 export bus,42.6
+12723,scenarios_H2G,H2G_A_TN_2035,TN-0.7MtH2export,2035,TN,H2 export bus,42.6
+13321,scenarios_H2G,H2G_A_TZ_2035,TZ-0.1MtH2export,2035,TZ,H2 export bus,103.8
+13919,scenarios_H2G,H2G_A_ZA_2035,ZA-0.1MtH2export,2035,ZA,H2 export bus,51.5
+14517,scenarios_H2G,H2G_A_ZA_2035,ZA-0.4MtH2export,2035,ZA,H2 export bus,51.7
+15115,scenarios_H2G,H2G_A_ZA_2035,ZA-0.7MtH2export,2035,ZA,H2 export bus,51.9
