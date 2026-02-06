@@ -2,8 +2,7 @@
 /networks
 __pycache__/
 /results/*
-!/results/marginal_prices_2035.csv
-!/results/marginal_prices_2050.csv
+!/results/marginal_prices.csv
 /configs
 gurobi.log
 .postprocess_done

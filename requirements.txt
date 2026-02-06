@@ -1,6 +1,5 @@
-geopandas
-pip
 streamlit>=1.18
 pandas
+numpy
 plotly
-pyaml
+pyyaml

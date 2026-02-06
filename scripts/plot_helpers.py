@@ -96,8 +96,16 @@ def set_scen_col_H2G(df, index_levels_to_drop=[]):
 
     # demand_info = df["demand"]#.map({"Exp": ""})
 
-    # Add export info based on 'eopts', handling NaN and string values
-    export_info = df["h2export"].astype(float).div(33.33).round(1).astype(str) + "MtH2export"
+    # Add export info based on 'h2export', mapping to low, mid, high 
+    export_info = df["year"].astype(str) + "-" + df["h2export"].astype(str)
+    export_info = export_info.map({
+        "2035-3.33": "low",
+        "2035-13.33": "mid", 
+        "2035-23.33": "high",
+        "2050-23.33": "low",
+        "2050-78.33": "mid", 
+        "2050-133.32": "high"
+    })
 
     df["scen"] = country_info + "-" + export_info
 
@@ -351,8 +359,15 @@ def add_production_consumption_legend_groups(fig, df):
     fig : plotly.graph_objects.Figure
         The modified figure with legend groups
     """
+    # Track which groups have had their title set (only set on first trace)
+    title_set = set()
+    
     # Add legend groups for Production (positive values) and Consumption (negative values)
     for trace in fig.data:
+        # Skip traces without a name (e.g., text annotations)
+        if not hasattr(trace, 'name') or trace.name is None:
+            continue
+            
         # Get the variable name from the trace
         variable_name = trace.name
         
@@ -363,12 +378,19 @@ def add_production_consumption_legend_groups(fig, df):
             # Determine if this variable is primarily production (positive) or consumption (negative)
             avg_value = variable_data.mean()
             
-            if avg_value > 0:
+            if avg_value >= 0:
                 trace.legendgroup = "Production"
-                trace.legendgrouptitle = {"text": "Production"}
+                if "Production" not in title_set:
+                    trace.legendgrouptitle = {"text": "Production"}
+                    title_set.add("Production")
             else:
                 trace.legendgroup = "Consumption" 
-                trace.legendgrouptitle = {"text": "Consumption"}
+                if "Consumption" not in title_set:
+                    trace.legendgrouptitle = {"text": "Consumption"}
+                    title_set.add("Consumption")
+    
+    # Ensure legend groups are visually separated
+    fig.update_layout(legend_traceorder='grouped', legend_tracegroupgap=10)
     
     return fig
 
@@ -563,9 +585,15 @@ my_template = go.layout.Template(
     )
 )
 
-pio.renderers.default = 'plotly_mimetype+notebook_connected'
-pio.templates["my"] = my_template
-pio.templates.default = "simple_white+xgridoff+ygridoff+my"
+def register_template():
+    """Register the custom template with plotly. Call this after importing plot_helpers
+    or after reloading plotly to ensure the template is active."""
+    pio.renderers.default = 'plotly_mimetype+notebook_connected'
+    pio.templates["my"] = my_template
+    pio.templates.default = "simple_white+xgridoff+ygridoff+my"
+
+# Register on module load
+register_template()
 #pio.kaleido.scope.mathjax= None
 
 def save_plotly_fig(df, fig, output_dir, fig_name):
@@ -576,10 +604,18 @@ def save_plotly_fig(df, fig, output_dir, fig_name):
     width = fig.layout.width
     height = fig.layout.height
     
-    fig.write_image(output_dir/f"{fig_name}.png", 
-                   width=width, 
-                   height=height, 
-                   engine="kaleido")
+    try:
+        fig.write_image(output_dir/f"{fig_name}.png", 
+                       width=width, 
+                       height=height)
+        fig.write_html(output_dir/f"{fig_name}.html", include_mathjax='cdn')
+    except Exception as e:
+        print(f"Warning: Could not save images for {fig_name}: {e}")
+        # Still save HTML even if PNG fails
+        try:
+            fig.write_html(output_dir/f"{fig_name}.html", include_mathjax='cdn')
+        except Exception as e2:
+            print(f"Warning: Could not save HTML for {fig_name}: {e2}")
 
 
 ##### Renaming and consolidation #####
@@ -845,9 +881,17 @@ def rename_electricity(tech):
     if tech == 'rail transport':
         return 'Transport'
     elif tech == 'seawater desalination':
+        return "Industry"    
+    elif tech == 'desalination':
         return "Industry"
+    elif tech == 'H2O pipeline':
+        return "Transport"
     elif tech == 'services':
         return "Commerce"
+    elif tech == 'industry':
+        return "Industry"
+    elif tech == 'agriculture':
+        return "Agriculture"
     
     # Apply base renaming
     tech = rename_techs(tech)

@@ -6,7 +6,7 @@ dependencies:
   - pypsa>=1.0.7
   - snakemake-minimal<8
   - jupyterlab
-  - plotly
+  - plotly==6.2
   - streamlit
   - pip:
     - kaleido==0.1.0post1 # for image export with plotly on windows

@@ -12,8 +12,8 @@ run:
 # DATA SELECTION
 # ============================================================================
 data:
-  countries: ['CD', 'EG', 'ET', 'GH', 'KE', 'MA', 'MR', 'NA', 'NG', 'TN', 'TZ', 'ZA']
-  years: [2035]      # Years to include in analysis
+  countries: ['CD', 'DZ', 'EG', 'ET', 'GH', 'KE', 'MA', 'MR', 'NA', 'NG', 'TN', 'TZ', 'ZA']
+  years: [2035, 2050]      # Years to include in analysis
   
   # Index levels to drop from multiindex when creating scenario labels
   index_levels_to_drop:
