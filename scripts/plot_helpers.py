@@ -1413,6 +1413,84 @@ def plot_capacity(
     return fig, df
 
 
+def plot_gwkm(
+    gwkm_df: pd.DataFrame,
+    config: dict,
+) -> Tuple[go.Figure, pd.DataFrame]:
+    """
+    Create a stacked bar chart for grid km data, with years as facet columns.
+
+    Mirrors the structure of plot_capacity: uses px.bar with the shared
+    fig_kwargs from config, applies apply_standard_styling and update_layout.
+
+    Parameters
+    ----------
+    gwkm_df : pd.DataFrame
+        Grid km dataframe, already filtered to the desired countries.
+        Expected columns: country, year, h2export, existing, added.
+    config : dict
+        Plot config dict (same object passed to plot_capacity / plot_energy_balance).
+
+    Returns
+    -------
+    Tuple[go.Figure, pd.DataFrame]
+        Single figure and the processed long-format DataFrame.
+    """
+    import plotly.express as px
+
+    _EXPORT_MAP = {
+        (2035, 3.33):   "low",
+        (2035, 13.33):  "mid",
+        (2035, 23.33):  "high",
+        (2050, 23.33):  "low",
+        (2050, 78.33):  "mid",
+        (2050, 133.32): "high",
+    }
+    COLOR_MAP = {"Existing": "#005b7f", "Added": "#179c7d"}
+
+    df = gwkm_df.copy()
+    for col in ["year", "h2export", "existing", "added"]:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
+
+    df["export_label"] = df.apply(
+        lambda r: _EXPORT_MAP.get((r["year"], r["h2export"]), f"{r['h2export']:.1f}"),
+        axis=1,
+    )
+    df["scen"] = df["country"] + " | " + df["export_label"]
+    df = df.sort_values(["country", "h2export"]).reset_index(drop=True)
+    scen_order = df["scen"].tolist()
+
+    # Melt existing + added into long format — same shape as prepare_dataframe output
+    df_long = df.melt(
+        id_vars=["scen", "year", "country"],
+        value_vars=["existing", "added"],
+        var_name="variable",
+        value_name="value",
+    )
+    df_long["variable"] = df_long["variable"].str.capitalize()
+
+    # Build fig_kwargs from config, mirroring plot_capacity
+    fig_kwargs = config.get("fig_kwargs", {}).copy()
+    fig_kwargs["height"] = config.get("heights", {}).get("large", 600)
+    fig_kwargs["barmode"] = "stack"
+
+    fig = px.bar(
+        df_long,
+        **fig_kwargs,
+        color_discrete_map=COLOR_MAP,
+        labels={"value": "GW\u00b7km", "year": "", "scen": "", "variable": ""},
+        category_orders={
+            "variable": list(COLOR_MAP.keys()),
+            "scen": scen_order,
+        },
+    )
+
+    apply_standard_styling(fig, "bar", {})
+    update_layout(fig)
+
+    return fig, df_long
+
+
 def load_plot_config(config_path: str = None):
     """
     Load plotting configuration from YAML file.

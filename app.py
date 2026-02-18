@@ -21,6 +21,7 @@ from scripts.plot_helpers import (
     apply_standard_styling,
     plot_energy_balance,
     plot_capacity,
+    plot_gwkm,
     register_template,
 )
 
@@ -49,6 +50,11 @@ def _load_energy_data(sdir_str, balance_keys, capacity_keys, cost_keys):
 @st.cache_data
 def _load_marginal_prices(sdir_str):
     return read_csv_nafix(Path(sdir_str) / "marginal_prices_prepared.csv")
+
+
+@st.cache_data
+def _load_gwkm(sdir_str, filename):
+    return read_csv_nafix(Path(sdir_str) / filename)
 
 
 # ---------------------------------------------------------------------------
@@ -119,27 +125,32 @@ DATASETS = {
         "rename": None,
     },
     "System costs": {"type": "costs", "chart_key": "system_costs"},
+    "Grid km (AC)": {"type": "gwkm", "filename": "gwkm_dict_AC.csv"},
+    "Grid km (H2 pipeline)": {"type": "gwkm", "filename": "gwkm_dict_H2 pipeline.csv"},
 }
 
 # ---------------------------------------------------------------------------
 # Marginal-price dumbbell chart (one per year)
 # ---------------------------------------------------------------------------
 
-def _marginal_price_dumbbell(df, year, data_start, data_end):
+def _marginal_price_dumbbell(df, year, data_start, data_mid, data_end):
+
     df = df[(df.year == year)].copy()
     countries = df["country"].unique()
 
     line_x, line_y = [], []
-    vals_start, vals_end, valid = [], [], []
+    vals_start, vals_mid, vals_end, valid = [], [], [], []
     skipped = []
 
     for country in countries:
         s = df.loc[(df.scen == f"{country}-{data_start}") & (df.country == country), "value"]
+        m = df.loc[(df.scen == f"{country}-{data_mid}") & (df.country == country), "value"]
         e = df.loc[(df.scen == f"{country}-{data_end}") & (df.country == country), "value"]
         if len(s) > 0 and len(e) > 0:
             vs, ve = s.values[0], e.values[0]
             vals_start.append(vs)
             vals_end.append(ve)
+            vals_mid.append(m.values[0] if len(m) > 0 else None)
             line_x.extend([vs, ve, None])
             line_y.extend([country, country, None])
             valid.append(country)
@@ -156,13 +167,19 @@ def _marginal_price_dumbbell(df, year, data_start, data_end):
                    marker=dict(color="grey")),
         go.Scatter(
             x=vals_start, y=valid, mode="markers+text", name=data_start,
-            text=[f"{v:.1f}" for v in vals_start], textposition="top center",
-            textfont=dict(size=11), marker=dict(color="#A6BCC9", size=13),
+            text=[f"{v:.1f}" for v in vals_start], textposition="middle left",
+            textfont=dict(size=11), marker=dict(color="#99bdcc", size=13),
+        ),
+        go.Scatter(
+            x=[v for v in vals_mid if v is not None],
+            y=[c for c, v in zip(valid, vals_mid) if v is not None],
+            mode="markers", name=data_mid,
+            marker=dict(color="#669db2 ", size=13),
         ),
         go.Scatter(
             x=vals_end, y=valid, mode="markers+text", name=data_end,
-            text=[f"{v:.1f}" for v in vals_end], textposition="top center",
-            textfont=dict(size=11), marker=dict(color="#179c7d", size=13),
+            text=[f"{v:.1f}" for v in vals_end], textposition="middle right",
+            textfont=dict(size=11), marker=dict(color="#005b7f", size=13), #669db2 
         ),
     ])
 
@@ -255,13 +272,10 @@ if spec["type"] == "marginal":
     if SCEN_FILTER:
         df = df.query("scen in @SCEN_FILTER")
 
-    if selected_year == 2035:
-        ds, de = "0.1MtH2export", "0.7MtH2export"
-    else:
-        ds, de = "0.7MtH2export", "4.0MtH2export"
+    ds, dm, de = "low", "mid", "high"
 
     with tab_chart:
-        fig, skipped = _marginal_price_dumbbell(df, selected_year, ds, de)
+        fig, skipped = _marginal_price_dumbbell(df, selected_year, ds, dm, de)
         if skipped:
             st.caption(f"Skipped: {', '.join(skipped)}")
         st.plotly_chart(fig, use_container_width=True)
@@ -351,6 +365,26 @@ elif spec["type"] == "costs":
         with tab_table:
             st.dataframe(df, use_container_width=True)
 
+    except (ValueError, KeyError) as e:
+        st.error(f"No data available for this selection: {e}")
+
+elif spec["type"] == "gwkm":
+    gwkm_df = _load_gwkm(str(SDIR), spec["filename"])
+    gwkm_df = gwkm_df[gwkm_df["country"].isin(selected_countries)].copy()
+
+    try:
+        fig, gwkm_plot_df = plot_gwkm(
+            gwkm_df,
+            config=plot_config,
+        )
+        with tab_chart:
+            st.plotly_chart(fig, use_container_width=True)
+        with tab_table:
+            st.dataframe(
+                gwkm_plot_df[["country", "year", "scen", "variable", "value"]]
+                .sort_values(["year", "country"]),
+                use_container_width=True,
+            )
     except (ValueError, KeyError) as e:
         st.error(f"No data available for this selection: {e}")
 
