@@ -1,5 +1,6 @@
 from pathlib import Path
 import re
+from pyparsing import col
 import yaml
 import pandas as pd
 idx_slice = pd.IndexSlice
@@ -13,6 +14,8 @@ warnings.simplefilter(action='ignore', category=DeprecationWarning) # Comment ou
 from plot_helpers import (
     chdir_to_root_dir,
     to_csv_nafix,
+    prepare_dataframe,
+    set_scen_col_H2G,
 )
 
 chdir_to_root_dir()
@@ -21,36 +24,36 @@ chdir_to_root_dir()
 
 run_name_prefix = "scenarios_H2G" # Experiment name
 
-sdir = Path.cwd() / "results"/ f"{run_name_prefix}_summary_v2"
+sdir = Path.cwd() / "results"/ f"{run_name_prefix}_summary_v3_storage_missing"
 sdir.mkdir(exist_ok=True, parents=True)
 
 run_names = [
-    "H2G_A_CD_2035",
-    "H2G_A_DZ_2035",
-    "H2G_A_EG_2035", 
-    "H2G_A_ET_2035",
-    "H2G_A_GH_2035",
+    # "H2G_A_CD_2035",
+    # "H2G_A_DZ_2035",
+    # "H2G_A_EG_2035", 
+    # "H2G_A_ET_2035",
+    # "H2G_A_GH_2035",
     "H2G_A_KE_2035",
-    "H2G_A_MA_2035",
-    "H2G_A_MR_2035",
-    "H2G_A_NA_2035",
-    "H2G_A_NG_2035",
-    "H2G_A_TN_2035",
-    "H2G_A_TZ_2035",
-    "H2G_A_ZA_2035", 
-    "H2G_A_CD_2050",
-    "H2G_A_DZ_2050",
-    "H2G_A_EG_2050", 
-    "H2G_A_ET_2050",
-    "H2G_A_GH_2050",
-    "H2G_A_KE_2050",
+    # "H2G_A_MA_2035",
+    # "H2G_A_MR_2035",
+    # "H2G_A_NA_2035",
+    # "H2G_A_NG_2035",
+    # "H2G_A_TN_2035",
+    # "H2G_A_TZ_2035",
+    # "H2G_A_ZA_2035", 
+    # "H2G_A_CD_2050",
+    # "H2G_A_DZ_2050",
+    # "H2G_A_EG_2050", 
+    # "H2G_A_ET_2050",
+    # "H2G_A_GH_2050",
+    # "H2G_A_KE_2050",
     "H2G_A_MA_2050",
-    "H2G_A_MR_2050",
-    "H2G_A_NA_2050",
-    "H2G_A_NG_2050",
-    "H2G_A_TN_2050",
-    "H2G_A_TZ_2050",
-    "H2G_A_ZA_2050"
+    # "H2G_A_MR_2050",
+    # "H2G_A_NA_2050",
+    # "H2G_A_NG_2050",
+    # "H2G_A_TN_2050",
+    # "H2G_A_TZ_2050",
+    # "H2G_A_ZA_2050"
 ]
 
 #%%
@@ -200,10 +203,12 @@ def calculate_gwkm(n, selection=None, decimals=1, which="optimal"):
     return gwkm.round(decimals)
 
 
+nc_files = nc_files.query("clusters == '11'") # for testing, to be removed
+
 # initialise dicts per metric (market balance, optimal capacities, costs, marginal prices) with dataframes per bus_carrier or other groups
 
 balance_dict = init_stats_dict(nc_files, keys=[
-    "AC", "H2", "oil", "gas", "co2 stored", "co2", "biogas",
+    "AC", "H2", "oil", "gas", "co2 stored", "co2", "biogas", "H2O", "H2O_desalinated"
     # , "methanol", "NH3", "steel", "HBI" "freshwater" "solid biomass",
     ], name="bus_carrier")
 
@@ -219,9 +224,14 @@ gwkm_dict = {
     "H2 pipeline": pd.DataFrame(index=nc_files.index, columns=["optimal", "added", "existing", "ratio"])
 }
 
+stores = pd.DataFrame(index=nc_files.index, columns=["H2 Store Tank", "H2 UHS", "battery", "home battery"])
+stores.columns.name = "bus" # NB: this is spatially resolved.
+
+
 pypsa.options.params.statistics.nice_names = False
 pypsa.options.params.statistics.drop_zero = False
 pypsa.options.params.statistics.round = 6
+
 
 for nc_files_idx in nc_files.index:
     
@@ -229,6 +239,9 @@ for nc_files_idx in nc_files.index:
 
     # energy balance per bus_carrier in TWh
     for bus_carrier in balance_dict.keys():
+
+        if bus_carrier not in n.buses.carrier.unique():
+            continue
 
         ds = (
             n.stats.energy_balance(
@@ -306,7 +319,18 @@ for nc_files_idx in nc_files.index:
     ds = n.stats.opex().dropna().groupby("carrier").sum().div(1e9).round(4)
 
     costs_dict["opex"].loc[nc_files_idx, ds.index] = ds.values
-    
+
+    ec_stores = n.stats.expanded_capacity(
+                components=["Store"], 
+                groupby="carrier",
+                aggregate_across_components=True
+            )
+
+    cols = stores.columns.intersection(ec_stores.index)
+    stores.loc[nc_files_idx, cols] = ec_stores.div(1e3).round(1)[cols] # GWh
+
+    # water cost and volume
+
     # ASSUMPTIONS: assume marginal costs of last unit can be earned as export price for all export
     # adding those revenues for export as negative opex costs
     # TODO: decide how to integrate revenues from exports in the costs_dict
@@ -318,7 +342,7 @@ for nc_files_idx in nc_files.index:
 
     # load averaged marginal prices per bus_carrier in currency/MWh
 
-    bus_carriers_to_price = ["H2", "NH3", "FT", "HBI", "steel", "STEEL", "industry methanol", "shipping methanol", "MEOH"]
+    bus_carriers_to_price = ["H2", "NH3", "FT", "HBI", "steel", "STEEL", "industry methanol", "shipping methanol", "MEOH", "H2O"]
     
     prices_load_weighted = n.stats.prices(groupby_time=True, weighting="load")
     
@@ -344,8 +368,29 @@ save_stats_dict(balance_dict, "balance_dict", sdir)
 save_stats_dict(optimal_capacity_dict, "optimal_capacity_dict", sdir)
 save_stats_dict(costs_dict, "costs_dict", sdir)
 
+to_csv_nafix(stores, sdir / "stores.csv")
+print(f"Saved stores to {sdir / 'stores.csv'}")
+
 to_csv_nafix(marginal_prices, sdir / "marginal_prices.csv")
 print(f"Saved marginal_prices to {sdir / 'marginal_prices.csv'}")
+
+# Prepare marginal prices for visualization: long-form with scen column, all bus carriers
+plot_summary_config = yaml.safe_load(Path("plot_summary.yaml").read_text())
+index_levels_to_drop = plot_summary_config["data"]["index_levels_to_drop"]
+scen_filter = plot_summary_config["data"]["scen_filter"]
+
+available_countries = nc_files.index.get_level_values("country").unique().tolist()
+available_years = nc_files.index.get_level_values("year").unique().tolist()
+idx_group_all = idx_slice[[run_name_prefix], :, available_countries, available_years]
+
+marginal_prices_prepared = prepare_dataframe(
+    marginal_prices, idx_group_all, index_levels_to_drop, set_scen_col_H2G, drop_zero=False
+)
+if scen_filter:
+    marginal_prices_prepared = marginal_prices_prepared.query("scen in @scen_filter")
+
+to_csv_nafix(marginal_prices_prepared, sdir / "marginal_prices_prepared.csv")
+print(f"Saved marginal_prices_prepared to {sdir / 'marginal_prices_prepared.csv'}")
 
 save_stats_dict(gwkm_dict, "gwkm_dict", sdir)
 

@@ -200,10 +200,13 @@ def prepare_dataframe(
     
     # Melt the DataFrame
     try:
-        df_melted = df.melt(id_vars=id_vars, value_vars=value_vars)
+        df_melted = df.melt(id_vars=id_vars, value_vars=value_vars, var_name="variable")
     except Exception as e:
         raise ValueError(f"Error during DataFrame melting: {e}")
     
+    # Coerce value column to numeric (handles object-dtype DataFrames, e.g. initialized without dtype)
+    df_melted['value'] = pd.to_numeric(df_melted['value'], errors='coerce')
+
     # Apply rename function to variable column if provided
     if rename_function is not None:
         try:
@@ -317,30 +320,29 @@ def get_supply_demand_from_balance(
     return supply_df, supply_sum_df, demand_df, demand_sum_df
 
 
-def update_layout(fig):
+def update_layout(fig, flip_axes=False):
     # Only apply textangle and textposition to bar traces to avoid conflicts with scatter traces
     fig.update_traces(textposition='inside', textangle=0, selector=dict(type='bar'))
     
     # Set custom hovertemplate for bar traces to show variable name
-    fig.update_traces(
-        hovertemplate='<b>%{fullData.name}</b><br>Scenario: %{x}<br>Value: %{y:.2f}<extra></extra>',
-        selector=dict(type='bar')
-    )
+    if flip_axes:
+        fig.update_traces(
+            hovertemplate='<b>%{fullData.name}</b><br>Scenario: %{y}<br>Value: %{x:.2f}<extra></extra>',
+            selector=dict(type='bar')
+        )
+    else:
+        fig.update_traces(
+            hovertemplate='<b>%{fullData.name}</b><br>Scenario: %{x}<br>Value: %{y:.2f}<extra></extra>',
+            selector=dict(type='bar')
+        )
     
     fig.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1]))
-    fig.update_xaxes(tickangle=25)
-    # fig.update_yaxes(matches=None)
-    # # Add ticks and show y-axis scale (numbers) for all y-axes in subplot
-    # fig.update_yaxes(
-    #     # ticks="outside",
-    #     # ticklen=5,
-    #     # tickwidth=1,
-    #     # tickcolor='black',
-    #     # showline=True,
-    #     # linewidth=1,
-    #     # linecolor='black',
-    #     showticklabels=True  # Ensure y-axis numbers are shown
-    # )
+    if not flip_axes:
+        fig.update_xaxes(tickangle=25)
+    else:
+        # Force all categorical y-axis labels to render; without this Plotly
+        # auto-skips ticks (e.g. every "-mid" row) when the chart is compact.
+        fig.update_yaxes(tickmode='linear', dtick=1)
     return
 
 def add_production_consumption_legend_groups(fig, df):
@@ -424,6 +426,7 @@ def add_totals_to_plot(fig, totals_df, **kwargs):
     y_offset = kwargs.get('y_offset', 1)
     text_format = kwargs.get('text_format', '.0f')
     value_column = kwargs.get('value_column', 'value')
+    flip_axes = kwargs.get('flip_axes', False)
     
     # Prepare totals data for plotting
     totals_data = totals_df.reset_index()
@@ -434,27 +437,49 @@ def add_totals_to_plot(fig, totals_df, **kwargs):
     for year in totals_data['year'].unique():
         year_data = totals_data[totals_data['year'] == year]
         
-        # Determine which subplot this year corresponds to
+        # Determine which subplot this year corresponds to.
+        # facet_col (default): first year → col 1 (x/y), second → col 2 (x2/y2) — left to right.
+        # facet_row (flipped): plotly express places the lowest value at the BOTTOM row,
+        # which is the highest-numbered subplot index. Reverse accordingly.
         years_list = sorted(totals_data['year'].unique())
-        col_num = years_list.index(year) + 1
+        if flip_axes:
+            col_num = len(years_list) - years_list.index(year)
+        else:
+            col_num = years_list.index(year) + 1
         
         # Format the text values
         text_values = [f"{val:{text_format}}" for val in year_data['total']]
         
-        fig.add_trace(
-            go.Scatter(
-                x=year_data['scen'],
-                y=year_data['total'] + y_offset,
-                mode='text',
-                text=text_values,
-                textposition='top center',
-                textfont=dict(size=textfont_size, color=textfont_color, weight="bold"),
-                showlegend=False,
-                hoverinfo='skip',
-                xaxis=f'x{col_num}' if col_num > 1 else 'x',
-                yaxis=f'y{col_num}' if col_num > 1 else 'y'
+        if flip_axes:
+            fig.add_trace(
+                go.Scatter(
+                    x=year_data['total'] + y_offset,
+                    y=year_data['scen'],
+                    mode='text',
+                    text=text_values,
+                    textposition='middle right',
+                    textfont=dict(size=textfont_size, color=textfont_color, weight="bold"),
+                    showlegend=False,
+                    hoverinfo='skip',
+                    xaxis=f'x{col_num}' if col_num > 1 else 'x',
+                    yaxis=f'y{col_num}' if col_num > 1 else 'y'
+                )
             )
-        )
+        else:
+            fig.add_trace(
+                go.Scatter(
+                    x=year_data['scen'],
+                    y=year_data['total'] + y_offset,
+                    mode='text',
+                    text=text_values,
+                    textposition='top center',
+                    textfont=dict(size=textfont_size, color=textfont_color, weight="bold"),
+                    showlegend=False,
+                    hoverinfo='skip',
+                    xaxis=f'x{col_num}' if col_num > 1 else 'x',
+                    yaxis=f'y{col_num}' if col_num > 1 else 'y'
+                )
+            )
     
     return fig
 
@@ -495,6 +520,7 @@ def add_balance_totals_to_plot(fig, supply_sum_df, demand_sum_df, **kwargs):
     value_column = kwargs.get('value_column', 'value')
     supply_label = kwargs.get('supply_label', '')
     demand_label = kwargs.get('demand_label', '')
+    flip_axes = kwargs.get('flip_axes', False)
     
     # Prepare supply totals data
     supply_data = supply_sum_df.reset_index()
@@ -512,26 +538,45 @@ def add_balance_totals_to_plot(fig, supply_sum_df, demand_sum_df, **kwargs):
         
         # Determine which subplot this year corresponds to
         years_list = sorted(supply_data['year'].unique())
-        col_num = years_list.index(year) + 1
+        if flip_axes:
+            col_num = len(years_list) - years_list.index(year)
+        else:
+            col_num = years_list.index(year) + 1
         
         # Format the text values for supply (positive values above bars)
         text_values = [f"{supply_label}{val:{text_format}}" if val > 0 else "" 
                       for val in year_data['total']]
         
-        fig.add_trace(
-            go.Scatter(
-                x=year_data['scen'],
-                y=year_data['total'] + y_offset,
-                mode='text',
-                text=text_values,
-                textposition='top center',
-                textfont=dict(size=textfont_size, color=textfont_color, weight="bold"),
-                showlegend=False,
-                hoverinfo='skip',
-                xaxis=f'x{col_num}' if col_num > 1 else 'x',
-                yaxis=f'y{col_num}' if col_num > 1 else 'y'
+        if flip_axes:
+            fig.add_trace(
+                go.Scatter(
+                    x=year_data['total'] + y_offset,
+                    y=year_data['scen'],
+                    mode='text',
+                    text=text_values,
+                    textposition='middle right',
+                    textfont=dict(size=textfont_size, color=textfont_color, weight="bold"),
+                    showlegend=False,
+                    hoverinfo='skip',
+                    xaxis=f'x{col_num}' if col_num > 1 else 'x',
+                    yaxis=f'y{col_num}' if col_num > 1 else 'y'
+                )
             )
-        )
+        else:
+            fig.add_trace(
+                go.Scatter(
+                    x=year_data['scen'],
+                    y=year_data['total'] + y_offset,
+                    mode='text',
+                    text=text_values,
+                    textposition='top center',
+                    textfont=dict(size=textfont_size, color=textfont_color, weight="bold"),
+                    showlegend=False,
+                    hoverinfo='skip',
+                    xaxis=f'x{col_num}' if col_num > 1 else 'x',
+                    yaxis=f'y{col_num}' if col_num > 1 else 'y'
+                )
+            )
     
     # Add demand totals trace for each year subplot (below negative bars)
     for year in demand_data['year'].unique():
@@ -539,27 +584,46 @@ def add_balance_totals_to_plot(fig, supply_sum_df, demand_sum_df, **kwargs):
         
         # Determine which subplot this year corresponds to
         years_list = sorted(demand_data['year'].unique())
-        col_num = years_list.index(year) + 1
+        if flip_axes:
+            col_num = len(years_list) - years_list.index(year)
+        else:
+            col_num = years_list.index(year) + 1
         
         # Format the text values for demand (negative values below bars)
         # Note: demand values are typically negative, so we show them below
         text_values = [f"{demand_label}{abs(val):{text_format}}" if val < 0 else "" 
                       for val in year_data['total']]
         
-        fig.add_trace(
-            go.Scatter(
-                x=year_data['scen'],
-                y=year_data['total'] - y_offset,
-                mode='text',
-                text=text_values,
-                textposition='bottom center',
-                textfont=dict(size=textfont_size, color=textfont_color, weight="bold"),
-                showlegend=False,
-                hoverinfo='skip',
-                xaxis=f'x{col_num}' if col_num > 1 else 'x',
-                yaxis=f'y{col_num}' if col_num > 1 else 'y'
+        if flip_axes:
+            fig.add_trace(
+                go.Scatter(
+                    x=-(year_data['total'] + y_offset),
+                    y=year_data['scen'],
+                    mode='text',
+                    text=text_values,
+                    textposition='middle left',
+                    textfont=dict(size=textfont_size, color=textfont_color, weight="bold"),
+                    showlegend=False,
+                    hoverinfo='skip',
+                    xaxis=f'x{col_num}' if col_num > 1 else 'x',
+                    yaxis=f'y{col_num}' if col_num > 1 else 'y'
+                )
             )
-        )
+        else:
+            fig.add_trace(
+                go.Scatter(
+                    x=year_data['scen'],
+                    y=year_data['total'] - y_offset,
+                    mode='text',
+                    text=text_values,
+                    textposition='bottom center',
+                    textfont=dict(size=textfont_size, color=textfont_color, weight="bold"),
+                    showlegend=False,
+                    hoverinfo='skip',
+                    xaxis=f'x{col_num}' if col_num > 1 else 'x',
+                    yaxis=f'y{col_num}' if col_num > 1 else 'y'
+                )
+            )
     
     return fig
 
@@ -578,7 +642,7 @@ my_template = go.layout.Template(
         legend=dict(bgcolor='rgba(0,0,0,0)'), #"#ffffff"
         title={'y': 0.95, 'x': .06},
         font_size=14,
-        uniformtext_minsize=10, 
+        uniformtext_minsize=9, 
         uniformtext_mode='hide',
         margin=dict(l=0, r=50, t=50, b=50),
         # margin=dict(l=15, r=0, t=80, b=0),
@@ -616,6 +680,33 @@ def save_plotly_fig(df, fig, output_dir, fig_name):
             fig.write_html(output_dir/f"{fig_name}.html", include_mathjax='cdn')
         except Exception as e2:
             print(f"Warning: Could not save HTML for {fig_name}: {e2}")
+
+
+def export_plotly_figure(fig, width=None, height=None, format="png"):
+    """Export a plotly figure to bytes suitable for ``st.download_button``.
+
+    Parameters
+    ----------
+    fig : plotly.graph_objects.Figure
+    width : int or None
+        Override width (px). Defaults to ``fig.layout.width``.
+    height : int or None
+        Override height (px). Defaults to ``fig.layout.height``.
+    format : str
+        Image format passed to ``fig.to_image``, e.g. ``"png"``, ``"svg"``.
+
+    Returns
+    -------
+    bytes or None
+        Raw image bytes, or ``None`` if export failed (e.g. kaleido not installed).
+    """
+    w = width or fig.layout.width
+    h = height or fig.layout.height
+    try:
+        return fig.to_image(format=format, width=w, height=h)
+    except Exception as e:
+        print(f"Warning: Could not export figure: {e}")
+        return None
 
 
 ##### Renaming and consolidation #####
@@ -869,6 +960,15 @@ def rename_h2(tech):
     else:
         return tech
 
+def rename_stores(tech):
+    rename = {
+        "battery": "Battery",
+        "home battery": "Battery",
+        "H2 Store Tank": "H2 Tank",
+        "H2 UHS": "H2 Underground storage",
+    }
+    return rename.get(tech, tech)
+
 def rename_electricity(tech):
     # Remove suffix first
     suffix_to_remove = [" electricity"]
@@ -922,6 +1022,16 @@ def rename_co2(tech):
     tech = rename_techs(tech)
     return tech
 
+def rename_h2o(tech):
+    # Check exact matches on original tech before renaming
+    if tech == 'H2O pipeline':
+        return 'Desalination'        
+    if tech == 'desalination':
+        return 'Desalination' 
+    if tech == "H2O generator":
+        return "Desalination"
+    return tech
+
 
 colors = {
     "electricity": {
@@ -935,6 +1045,7 @@ colors = {
         #"Wind": '#005b7f',
         "Wind onshore": '#005b7f',
         "Wind offshore (DC)": "#39c1cd",
+        "Wind offshore (AC)": "#39c1cd",
         "Coal": '#454545',
         "Hydro": '#a6bbc8',
         "Nuclear": "#bb0056",
@@ -1166,13 +1277,13 @@ def apply_standard_styling(fig, chart_type: str, config: dict = None):
     
     return fig
 
-
 def plot_energy_balance(
     carrier: str,
     balance_dict: dict,
     config: dict,
     rename_function=None,
     post_process_function=None,
+    rename_scen_function=None,
     show_supply: bool = None,
     save_dir=None
 ):
@@ -1213,6 +1324,7 @@ def plot_energy_balance(
     scen_order = config.get('scen_order', [])
     fig_kwargs = config['fig_kwargs']
     idx_group_name = config['idx_group_name']
+    flip_axes = config.get('flip_axes', False)
     
     # Prepare dataframe
     df = prepare_dataframe(
@@ -1234,7 +1346,12 @@ def plot_energy_balance(
     # Apply scenario filter
     if scen_filter:
         df = df.query("scen in @scen_filter")
-    
+
+    # Apply scenario rename (e.g. strip level suffix when a single level is shown)
+    if rename_scen_function is not None:
+        df["scen"] = df["scen"].map(rename_scen_function)
+        scen_order = list(dict.fromkeys(rename_scen_function(s) for s in scen_order))
+
     # Split supply/demand if requested
     if chart_config.get('split_supply_demand', False):
         supply_df, supply_sum_df, demand_df, demand_sum_df = get_supply_demand_from_balance(df)
@@ -1256,7 +1373,8 @@ def plot_energy_balance(
     
     # Override fig_kwargs with chart-specific settings
     fig_kwargs_custom = fig_kwargs.copy()
-    if 'height' in chart_config:
+    if 'height' in chart_config and not flip_axes:
+        # When flip_axes is True, app.py already sets the height based on country count
         height_key = chart_config['height']
         fig_kwargs_custom['height'] = config['heights'].get(height_key, 500)
     if 'text_auto' in chart_config:
@@ -1279,19 +1397,21 @@ def plot_energy_balance(
     fig = apply_standard_styling(fig, chart_type, chart_config)
     
     # Apply standard layout updates
-    update_layout(fig)
+    update_layout(fig, flip_axes=flip_axes)
     
     # Add totals if appropriate
-    if chart_config.get('split_supply_demand', False) and totals_df is not None:
-        fig = add_totals_to_plot(fig, totals_df)
-    elif chart_config.get('add_legend_groups', False):
-        fig = add_production_consumption_legend_groups(fig, plot_df)
-        fig = add_balance_totals_to_plot(
-            fig, supply_sum_df, demand_sum_df,
-            y_offset=chart_config.get('y_offset', 5),
-            supply_label='',
-            demand_label=''
-        )
+    if config.get('show_totals', True):
+        if chart_config.get('split_supply_demand', False) and totals_df is not None:
+            fig = add_totals_to_plot(fig, totals_df, flip_axes=flip_axes)
+        elif chart_config.get('add_legend_groups', False):
+            fig = add_production_consumption_legend_groups(fig, plot_df)
+            fig = add_balance_totals_to_plot(
+                fig, supply_sum_df, demand_sum_df,
+                y_offset=chart_config.get('y_offset', 5),
+                supply_label='',
+                demand_label='',
+                flip_axes=flip_axes
+            )
     
     # Save figure
     if save_dir:
@@ -1307,6 +1427,7 @@ def plot_capacity(
     config: dict,
     rename_function=None,
     post_process_function=None,
+    rename_scen_function=None,
     save_dir=None
 ):
     """
@@ -1344,6 +1465,7 @@ def plot_capacity(
     scen_order = config.get('scen_order', [])
     fig_kwargs = config['fig_kwargs']
     idx_group_name = config['idx_group_name']
+    flip_axes = config.get('flip_axes', False)
     
     # Prepare dataframe
     df = prepare_dataframe(
@@ -1365,7 +1487,12 @@ def plot_capacity(
     # Apply scenario filter
     if scen_filter:
         df = df.query("scen in @scen_filter")
-    
+
+    # Apply scenario rename (e.g. strip level suffix when a single level is shown)
+    if rename_scen_function is not None:
+        df["scen"] = df["scen"].map(rename_scen_function)
+        scen_order = list(dict.fromkeys(rename_scen_function(s) for s in scen_order))
+
     # Get supply/demand split (for capacity, we just use supply as positive values)
     supply_df, supply_sum_df, demand_df, demand_sum_df = get_supply_demand_from_balance(df)
     
@@ -1398,12 +1525,12 @@ def plot_capacity(
     fig = apply_standard_styling(fig, chart_type, chart_config)
     
     # Apply standard layout updates
-    update_layout(fig)
+    update_layout(fig, flip_axes=flip_axes)
     
     # Add totals
-    if supply_sum_df is not None and not supply_sum_df.empty:
+    if config.get('show_totals', True) and supply_sum_df is not None and not supply_sum_df.empty:
         textfont_size = chart_config.get('totals_font_size', 14)
-        fig = add_totals_to_plot(fig, supply_sum_df, textfont_size=textfont_size)
+        fig = add_totals_to_plot(fig, supply_sum_df, textfont_size=textfont_size, flip_axes=flip_axes)
     
     # Save figure
     if save_dir:
@@ -1416,6 +1543,7 @@ def plot_capacity(
 def plot_gwkm(
     gwkm_df: pd.DataFrame,
     config: dict,
+    rename_scen_function=None,
 ) -> Tuple[go.Figure, pd.DataFrame]:
     """
     Create a stacked bar chart for grid km data, with years as facet columns.
@@ -1456,9 +1584,29 @@ def plot_gwkm(
         lambda r: _EXPORT_MAP.get((r["year"], r["h2export"]), f"{r['h2export']:.1f}"),
         axis=1,
     )
-    df["scen"] = df["country"] + " | " + df["export_label"]
+    df["scen"] = df["country"] + "-" + df["export_label"]
+
+    # Aggregate duplicates (the summary CSV may contain rows from
+    # multiple model runs for the same country/year/h2export).
+    # Mirrors the groupby().sum() step in prepare_dataframe().
+    df = (
+        df.groupby(["scen", "country", "year", "h2export", "export_label"], as_index=False)
+        [["existing", "added"]]
+        .mean()
+    )
     df = df.sort_values(["country", "h2export"]).reset_index(drop=True)
     scen_order = df["scen"].tolist()
+
+    # Apply scenario filter (same logic as plot_energy_balance / plot_capacity)
+    scen_filter = config.get("scen_filter", False)
+    if scen_filter:
+        df = df[df["scen"].isin(scen_filter)]
+        scen_order = [s for s in scen_order if s in scen_filter]
+
+    # Apply scenario rename (e.g. strip level suffix when a single level is shown)
+    if rename_scen_function is not None:
+        df["scen"] = df["scen"].map(rename_scen_function)
+        scen_order = list(dict.fromkeys(rename_scen_function(s) for s in scen_order))
 
     # Melt existing + added into long format — same shape as prepare_dataframe output
     df_long = df.melt(
@@ -1478,17 +1626,203 @@ def plot_gwkm(
         df_long,
         **fig_kwargs,
         color_discrete_map=COLOR_MAP,
-        labels={"value": "GW\u00b7km", "year": "", "scen": "", "variable": ""},
+        labels={"value": "Grid capacity (GW\u00b7km)", "year": "", "scen": "", "variable": ""},
         category_orders={
             "variable": list(COLOR_MAP.keys()),
             "scen": scen_order,
         },
     )
 
+    flip_axes = config.get('flip_axes', False)
     apply_standard_styling(fig, "bar", {})
-    update_layout(fig)
+    update_layout(fig, flip_axes=flip_axes)
 
     return fig, df_long
+
+
+def h2o_cost_bar_fig(df_scen, year, components,
+                     scen_order_list=None,
+                     component_colors=None,
+                     value_axis_title="Average water costs per H2 (€/MWh<sub>H2</sub>)",
+                     conversion_factor=0.0333,
+                     secondary_axis_title="Average water costs per H2 (€/kg<sub>H2</sub>)",
+                     secondary_axis_color="#a8508c",
+                     min_pct_label=100,
+                     show_totals=True,
+                     flip_axes=False):
+    """
+    Stacked bar chart of H2O cost per MWh_H2 by component, per scenario.
+
+    When *flip_axes* is ``True`` the bars are horizontal (scenarios on y-axis,
+    value on x-axis) — matching the convention used by the other energy-system
+    charts when the "Flip axes" display option is enabled.  When ``False``
+    (default) the bars are vertical (scenarios on x-axis, value on y-axis).
+
+    Parameters
+    ----------
+    df_scen : DataFrame
+        Must contain columns [country, year, scen, total, *components].
+    year : int
+        Planning year to filter on.
+    components : list of str
+        Non-trivial cost components to show.
+    scen_order_list : list of str, optional
+        ISO-based scenario order (e.g. ["CD-low", ...]).
+    component_colors : dict, optional
+        Mapping of component name → colour hex string.
+    value_axis_title : str
+        Label for the primary value axis.
+    conversion_factor : float
+        Multiply MWh value to get kg value (default 0.0333).
+    secondary_axis_title : str
+        Label for the secondary (converted-unit) axis.
+    secondary_axis_color : str
+        Colour used for the secondary axis ticks / title.
+    min_pct_label : float
+        Minimum % share to print a label inside a segment.
+    show_totals : bool
+        Whether to annotate total cost at the end of each bar.
+    flip_axes : bool
+        ``False`` → vertical bars (default); ``True`` → horizontal bars.
+
+    Returns
+    -------
+    plotly.graph_objects.Figure
+    """
+    import plotly.express as px
+
+    comp_colors = component_colors or {}
+
+    df = df_scen[df_scen["year"] == year].copy()
+
+    # Build scenario order; reverse so first entry appears at top (horizontal)
+    present_scens = set(df["scen"].values)
+    if scen_order_list:
+        ordered = [s for s in scen_order_list if s in present_scens]
+    else:
+        ordered = df.sort_values("total", ascending=True)["scen"].tolist()
+    scen_order = list(reversed(ordered)) if flip_axes else ordered
+
+    max_total = df["total"].max() if not df.empty else 1
+
+    # Melt to long format and add % labels per segment
+    df_long = df.melt(
+        id_vars=["scen", "total"],
+        value_vars=[c for c in components if c in df.columns],
+        var_name="variable",
+        value_name="value",
+    )
+    df_long["pct_label"] = df_long.apply(
+        lambda row: f"{row['value'] / row['total'] * 100:.0f}%"
+        if row["total"] > 0 and row["value"] / row["total"] * 100 >= min_pct_label else "",
+        axis=1,
+    )
+
+    # ---- build px.bar kwargs depending on orientation ----
+    if flip_axes:
+        bar_kwargs = dict(
+            x="value", y="scen", orientation="h",
+            labels={"value": value_axis_title, "scen": "", "variable": ""},
+        )
+    else:
+        bar_kwargs = dict(
+            x="scen", y="value",
+            labels={"value": value_axis_title, "scen": "", "variable": ""},
+        )
+
+    fig = px.bar(
+        df_long,
+        **bar_kwargs,
+        color="variable",
+        barmode="relative",
+        text="pct_label",
+        color_discrete_map=comp_colors,
+        category_orders={
+            "variable": list(comp_colors.keys()),
+            "scen": scen_order,
+        },
+    )
+
+    # Apply standard styling and layout
+    apply_standard_styling(fig, "bar")
+    update_layout(fig, flip_axes=flip_axes)
+
+    # ---- Annotate total cost at the end of each bar ----
+    if show_totals:
+        for _, row in df.iterrows():
+            if flip_axes:
+                fig.add_annotation(
+                    y=row["scen"], x=row["total"],
+                    text=f"  <b>{row['total']:.1f}</b>",
+                    showarrow=False, xanchor="left",
+                    font=dict(size=11),
+                )
+            else:
+                fig.add_annotation(
+                    x=row["scen"], y=row["total"],
+                    text=f"<b>{row['total']:.1f}</b>",
+                    showarrow=False, yanchor="bottom", yshift=4,
+                    font=dict(size=11),
+                )
+
+    # ---- Invisible scatter trace to anchor the secondary axis ----
+    if flip_axes:
+        fig.add_trace(go.Scatter(
+            x=[0, max_total * conversion_factor],
+            y=[scen_order[0], scen_order[0]],
+            xaxis="x2",
+            mode="markers",
+            marker=dict(opacity=0),
+            showlegend=False,
+            hoverinfo="skip",
+        ))
+    else:
+        fig.add_trace(go.Scatter(
+            y=[0, max_total * conversion_factor],
+            x=[scen_order[0], scen_order[0]],
+            yaxis="y2",
+            mode="markers",
+            marker=dict(opacity=0),
+            showlegend=False,
+            hoverinfo="skip",
+        ))
+
+    # ---- Final layout ----
+    value_range = [0, max_total * 1.15]
+    secondary_range = [0, max_total * 1.15 * conversion_factor]
+
+    secondary_axis_props = dict(
+        title=dict(text=secondary_axis_title, font=dict(color=secondary_axis_color)),
+        tickfont=dict(color=secondary_axis_color),
+        linecolor=secondary_axis_color,
+        tickcolor=secondary_axis_color,
+    )
+
+    if flip_axes:
+        fig.update_layout(
+            height=max(500, len(df) * 28 + 130),
+            width=800,
+            xaxis=dict(range=value_range, title=value_axis_title),
+            xaxis2=dict(**secondary_axis_props, overlaying="x", side="top",
+                        range=secondary_range),
+            yaxis=dict(range=[-0.5, len(scen_order) - 0.5]),
+            uniformtext_minsize=8, uniformtext_mode="show",
+            legend=dict(x=1.01, y=1, xanchor="left", yanchor="top"),
+            margin=dict(l=0, r=90, t=60, b=50),
+        )
+    else:
+        fig.update_layout(
+            height=500,
+            width=800,
+            yaxis=dict(range=value_range, title=value_axis_title),
+            yaxis2=dict(**secondary_axis_props, overlaying="y", side="right",
+                        range=secondary_range),
+            xaxis=dict(tickangle=25),
+            uniformtext_minsize=8, uniformtext_mode="show",
+            legend=dict(x=1.01, y=1, xanchor="left", yanchor="top"),
+            margin=dict(l=0, r=90, t=40, b=80),
+        )
+    return fig
 
 
 def load_plot_config(config_path: str = None):
