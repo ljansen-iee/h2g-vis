@@ -6,7 +6,7 @@
 # ============================================================================
 run:
   name_prefix: "scenarios_H2G"  # Experiment name prefix
-  summary_version: "v3_storage"   # Summary directory version
+  summary_version: "main"   # Summary directory version
   
 # ============================================================================
 # DATA SELECTION

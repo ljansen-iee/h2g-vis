@@ -18,6 +18,7 @@ from scripts.plot_helpers import (
     rename_h2o,
     rename_oil,
     rename_co2,
+    rename_co2_stored,
     rename_costs,
     rename_stores,
     colors,
@@ -291,11 +292,11 @@ DATASETS = {
     },
     "CO2 capture and usage": {
         "type": "balance", "carrier": "co2 stored", "chart_key": "co2_stored_balance",
-        "rename": rename_co2,
+        "rename": rename_co2_stored,
     },
     "CO2 emissions": {
         "type": "balance", "carrier": "co2", "chart_key": "co2_emissions",
-        "rename": None,
+        "rename": rename_co2,
     },
     "Water balance": {
         "type": "balance", "carrier": "H2O", "chart_key": "water_balance",
@@ -584,7 +585,7 @@ def _render_export_controls(fig, key: str) -> None:
 with st.sidebar:
     st.title("H2Global meets Africa Project")
     st.subheader("Comparative assessment of hydrogen production costs using PyPSA-Earth")
-    _default_version = f"H2 Export from 13 African countries {yaml_config['run']['summary_version']}"
+    _default_version = f"13 countries {yaml_config['run']['summary_version']}"
     _default_idx = list(VERSION_OPTIONS).index(_default_version) if _default_version in VERSION_OPTIONS else 0
     selected_version = st.selectbox("Select experiment version", list(VERSION_OPTIONS), index=_default_idx)
     SDIR = VERSION_OPTIONS[selected_version]
@@ -607,17 +608,66 @@ _vl_key = "volume_labels_mt" if volume_in_mt else "volume_labels_twh"
 VOLUME_LABELS = {int(k): v for k, v in yaml_config["data"][_vl_key].items()}
 
 # ---------------------------------------------------------------------------
+# URL query-parameter pre-filtering
+# ---------------------------------------------------------------------------
+# Supported parameters (all optional):
+#   ?country=MA            – single ISO2 country code, pre-selects that country
+#   ?country=MA,KE,NG      – comma-separated list, pre-selects multiple countries
+#   ?year=2035             – pre-selects the year (integer)
+#   ?dataset=Marginal+prices – pre-selects the dataset tab
+#   ?level=low,mid         – comma-separated scenario levels
+#
+# Example iframe embed:
+#   <iframe src="https://your-app.com/?country=MA&year=2035" ...></iframe>
+# The parent website can update the iframe src dynamically via JavaScript to
+# react to map-click events:
+#   iframe.src = `https://your-app.com/?country=${isoCode}&year=${year}`;
+# ---------------------------------------------------------------------------
+
+_qp = st.query_params
+
+# Country
+_qp_country_raw = _qp.get("country", "")
+_qp_countries = (
+    [c.strip().upper() for c in _qp_country_raw.split(",") if c.strip()]
+    if _qp_country_raw else []
+)
+_qp_countries = [c for c in _qp_countries if c in ALL_COUNTRIES]  # validate
+
+# Year
+_qp_year_raw = _qp.get("year", "")
+try:
+    _qp_year = int(_qp_year_raw) if _qp_year_raw else None
+except ValueError:
+    _qp_year = None
+_qp_year = _qp_year if _qp_year in ALL_YEARS else None
+
+# Dataset
+_qp_dataset_raw = _qp.get("dataset", "")
+_qp_dataset = _qp_dataset_raw if _qp_dataset_raw in DATASETS else None
+
+# Scenario levels
+_qp_level_raw = _qp.get("level", "")
+_qp_levels = (
+    [lvl.strip().lower() for lvl in _qp_level_raw.split(",") if lvl.strip()]
+    if _qp_level_raw else []
+)
+_qp_levels = [lvl for lvl in _qp_levels if lvl in ["low", "mid", "high"]]
+
+# ---------------------------------------------------------------------------
 # Main area — controls
 # ---------------------------------------------------------------------------
 
 LEVEL_OPTIONS = ["low", "mid", "high"]
 col_dataset, col_scen_level, col_year = st.columns([2, 1, 1])
 with col_dataset:
-    dataset = st.selectbox("Select dataset", list(DATASETS.keys()))
+    _ds_index = list(DATASETS.keys()).index(_qp_dataset) if _qp_dataset else 0
+    dataset = st.selectbox("Select dataset", list(DATASETS.keys()), index=_ds_index)
 with col_scen_level:
     if dataset not in ("Marginal prices",):
+        _lvl_default = _qp_levels if _qp_levels else LEVEL_OPTIONS
         selected_levels = st.multiselect(
-            "Scenario levels", LEVEL_OPTIONS, default=LEVEL_OPTIONS
+            "Scenario levels", LEVEL_OPTIONS, default=_lvl_default
         )
         if not selected_levels:
             selected_levels = LEVEL_OPTIONS
@@ -625,16 +675,21 @@ with col_scen_level:
         selected_levels = LEVEL_OPTIONS
 with col_year:
     if dataset in ("Marginal prices", "Water cost breakdown"):
-        selected_year = st.selectbox("Select year", ALL_YEARS)
+        _yr_index = ALL_YEARS.index(_qp_year) if _qp_year else 0
+        selected_year = st.selectbox("Select year", ALL_YEARS, index=_yr_index)
 
 default_all = dataset in ("Marginal prices", "Water cost breakdown")
 col_check, col_select = st.columns([1, 3])
 with col_check:
     select_all = st.checkbox("Select all countries", value=default_all)
 with col_select:
+    _country_default = (
+        ALL_COUNTRIES if select_all
+        else (_qp_countries if _qp_countries else DEFAULT_COUNTRIES)
+    )
     selected_countries = st.multiselect(
         "Select countries", options=ALL_COUNTRIES,
-        default=ALL_COUNTRIES if select_all else DEFAULT_COUNTRIES,
+        default=_country_default,
         disabled=select_all,
     )
     if select_all:
@@ -802,9 +857,10 @@ elif spec["type"] == "costs":
 
     try:
         stats_df = pd.concat([costs_dict["capex"], costs_dict["opex"]], axis=0)
-        df = prepare_dataframe(stats_df, IDX_GROUP, INDEX_LEVELS_TO_DROP, set_scen_col)
-        if use_rename:
-            df.variable = df.variable.map(rename_costs)
+        df = prepare_dataframe(
+            stats_df, IDX_GROUP, INDEX_LEVELS_TO_DROP, set_scen_col,
+            rename_function=rename_costs if use_rename else None,
+        )
         df = df[df["value"] != 0]
         if effective_scen_filter:
             df = df.query("scen in @effective_scen_filter")

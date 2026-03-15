@@ -719,7 +719,6 @@ def rename_techs(label):
     followed by specific technology mappings.
     """
 
-    # Exact rename mappings
     rename = {
         "solar": "Solar PV",
         "solar rooftop": "Solar PV",
@@ -757,13 +756,14 @@ def rename_techs(label):
         "coal": "Coal",
         "Sasol_coal": "Coal",
         "Sabatier": "CH4 Synthesis",
+        "geothermal": "Geothermal",
+        "oil": "Oil",
     }
     for old, new in rename.items():
         if old == label:
             label = new
             break
 
-    # Remove prefixes
     prefix_to_remove = [
         "urban ",
         "rural ",
@@ -772,9 +772,8 @@ def rename_techs(label):
     ]
     for ptr in prefix_to_remove:
         if label[: len(ptr)] == ptr:
-            label = label[len(ptr) :]
+            label = label[len(ptr):]
 
-    # Rename if substring contains
     rename_if_contains = [
         "CHP",
         "Gas boiler",
@@ -789,7 +788,6 @@ def rename_techs(label):
             label = rif
             break
 
-    # Rename if substring contains (with specific mappings)
     rename_if_contains_dict = {
         "water tanks": "Hot water storage",
         "retrofitting": "Building retrofitting",
@@ -816,78 +814,70 @@ def rename_techs(label):
             label = new
             break
 
-    
-    # Step 5: Special case with substring replacement
     if "SMR" in label:
         return label.replace("SMR", "Steam reforming")
-    
+
     return label
     
 
-def rename_to_upper_case(tech):
-    tech = tech[0].upper() + tech[1:]
-    return tech
-
-
 def rename_costs(tech):
-    """
-    """
+    """Map a technology name to an aggregated cost category.
 
-    tech = rename_to_upper_case(tech)
-    # Check patterns on original tech before renaming
-    if tech in ["Fischer-Tropsch export"]:
-        return "PtL export"    
-    elif tech in ["Haber-Bosch"]:
-        return "NH3 Synthesis"
-    elif tech in ["NH3 export"]:
-        return "Ammonia export"
-    elif tech in ["H2 export", "H2"]:
+    Categories
+    ----------
+    Solar | Wind | H2 Electrolysis | H2 export | Storage |
+    Infrastructure | Fossil fuels | Bioenergy | Nuclear | Geothermal |
+    CO2 Sequestration | Other CAPEX
+    """
+    tl = tech.strip().lower()
+
+    if tl in ("h2", "h2 export", "fischer-tropsch", "fischer-tropsch export",
+              "sabatier", "nh3 export", "haber-bosch"):
         return "H2 export"
-    elif tech in ["H2 Store Tank"]:
-        return "H2 storage"
-    elif tech in ["electricity distribution grid"]:
-        return "Distribution grid"
-    
-    # Apply base renaming
-    tech = rename_techs(tech)
-    
-    if tech in ["Solar PV", "Solar CSP"]:
+
+    if tl in ("solar", "solar rooftop", "solar csp", "solar pv") or "solar thermal" in tl:
         return "Solar"
-    elif tech in ["Onshore Wind", "Offshore Wind (DC)", "Wind onshore"]:
+
+    if tl in ("onwind", "offwind-ac", "offwind-dc"):
         return "Wind"
-    elif tech in ["H2 Electrolysis"]:
+
+    if tl == "h2 electrolysis":
         return "H2 Electrolysis"
-    elif tech in ["Hydro Power", "Hydroelectricity"]:
-        return "Hydro"    
-    elif tech in ["Battery"]:
-        return "Battery"
-    elif tech in ['Transmission lines']:
-        return "Transmission line"
-    elif tech in ["Coal"]:
-        return "Coal"
-    elif tech in ["Oil"]:
-        return "Oil"
-    elif tech in ["Gas"]:
-        return "Gas"
-    elif tech in ["Nuclear"]:
+
+    if ("battery" in tl
+            or "water tanks" in tl
+            or tl in ("h2 store tank", "h2 uhs", "phs",
+                      "h2o store", "h2o store charger", "h2o store discharger")):
+        return "Storage"
+
+    if tl in ("ac", "electricity distribution grid", "h2 pipeline", "h2o pipeline"):
+        return "Infrastructure"
+
+    if (tl in ("coal", "lignite", "oil", "gas", "ccgt", "ocgt",
+               "gas for industry", "gas for industry cc")
+            or "gas boiler" in tl
+            or "gas chp" in tl):
+        return "Fossil fuels"
+
+    if "biomass" in tl or "biogas" in tl:
+        return "Bioenergy"
+
+    if tl == "nuclear":
         return "Nuclear"
-    elif tech in ["CH4 Synthesis"]:
-        return "CH4 Synthesis"
-    elif tech in ["FT Synthesis"]:
-        return "FT Synthesis"
-    elif tech in ["Power-to-heat"]:
-        return "Power-to-heat"
-    elif tech in ["Process emissions CC", "Carbon capture", "Direct air capture"]:
-        return "Carbon capture"
-    else:
-        return tech
+
+    if tl == "geothermal":
+        return "Geothermal"
+
+    if tl == "co2 stored":
+        return "CO2 Sequestration"
+
+    return "Other CAPEX"
     
 def rename_oil(tech):
-    # Check patterns on original tech before renaming
     if "rail transport" in tech:
         return "Rail transport"
     elif "shipping" in tech:
-        return "Navigation"
+        return "Maritime"
     elif "industry" in tech:
         return "Industry"
     elif "land transport" in tech:
@@ -900,50 +890,36 @@ def rename_oil(tech):
         return "Agriculture"
     elif "residential" in tech:
         return "Residential"
-    elif tech in ["oil"]:
+    elif tech == "oil":
         return "Fossil fuel import"
-    elif tech in ["Fischer-Tropsch export"]:
+    elif tech == "Fischer-Tropsch export":
         return "FT Synthesis export"
-    
-    # Apply base renaming for other cases
-    tech = rename_techs(tech)
-    if tech in ["FT Synthesis"]:
-        return "FT Synthesis"
-    else:
-        return tech
+    return rename_techs(tech)
     
 def rename_gas(tech):
-    # Check patterns on original tech before renaming
-    if tech in ["gas"]:
+    if tech == "gas":
         return "Gas import"
     elif "methanation" in tech:
         return "CH4 Synthesis"
     elif "residential" in tech:
-         return "Residential"
+        return "Residential"
     elif "services" in tech:
         return "Commerce"
     elif tech == "gas for industry CC":
         return "Industry with CC"
     elif tech == "gas for industry":
-        return "Industry"    
-    
-    # Apply base renaming
-    tech = rename_techs(tech)
-    if tech in ["OCGT", "CCGT", "Gas turbines"]:
-        return "Gas turbines"
-    elif tech == "Biogas":
+        return "Industry"
+    elif "biogas" in tech.lower():
         return "Biogas"
-    elif tech == "Gas boiler":
+    elif "gas boiler" in tech.lower():
         return "Gas boiler"
-    else:
-        return tech
+    return rename_techs(tech)
     
 def rename_h2(tech):
-    # Check patterns on original tech before renaming
     if "methanolisation" in tech:
         return "CH3OH Synthesis"
     elif "shipping" in tech:
-        return "Navigation"
+        return "Maritime"
     elif "industry" in tech:
         return "Other industry"
     elif "land transport" in tech:
@@ -952,13 +928,7 @@ def rename_h2(tech):
         return "H2 export"
     elif tech == "DRI":
         return "H2 DRI"
-    
-    # Apply base renaming for other cases
-    tech = rename_techs(tech)
-    if tech == "H2 Fuel Cell":
-        return "H2 Fuel Cell"
-    else:
-        return tech
+    return rename_techs(tech)
 
 def rename_stores(tech):
     rename = {
@@ -970,18 +940,13 @@ def rename_stores(tech):
     return rename.get(tech, tech)
 
 def rename_electricity(tech):
-    # Remove suffix first
-    suffix_to_remove = [" electricity"]
-    for sfx in suffix_to_remove:
-        tech = tech.removesuffix(sfx)
-    
-    # Check patterns on original tech before renaming
+    tech = tech.removesuffix(" electricity")
     if tech == 'BEV charger':
         return 'Transport'
-    if tech == 'rail transport':
+    elif tech == 'rail transport':
         return 'Transport'
     elif tech == 'seawater desalination':
-        return "Industry"    
+        return "Industry"
     elif tech == 'desalination':
         return "Industry"
     elif tech == 'H2O pipeline':
@@ -992,43 +957,80 @@ def rename_electricity(tech):
         return "Industry"
     elif tech == 'agriculture':
         return "Agriculture"
-    
-    # Apply base renaming
     tech = rename_techs(tech)
-    
     if tech == 'Transmission lines':
         return "Residential"
     elif tech in [
-        "Power-to-heat", 
-        "FT Synthesis", "NH3 Synthesis",  
-        "Direct air capture",
-        "EAF", "DRI"]:
+            "Power-to-heat",
+            "FT Synthesis", "NH3 Synthesis",
+            "Direct air capture",
+            "EAF", "DRI"]:
         return "Industry"
     else:
         return tech
 
-def rename_co2(tech):
-    # Check exact matches on original tech before renaming
+def rename_co2_stored(tech):
+    """Rename function for the CO2 stored carrier (CO2 capture and usage chart)."""
     if tech == 'solid biomass for industry CC':
-        return 'Biomass for industry with CC'        
-    if tech == 'urban central solid biomass CHP CC':
-        return 'Biomass for CHP with CC'   
+        return 'Biomass for industry with CC'
+    elif tech == 'urban central solid biomass CHP CC':
+        return 'Biomass for CHP with CC'
     elif tech == 'gas for industry CC':
         return "Gas for industry with CC"
     elif tech == 'process emissions CC':
         return "Process emissions with CC"
-    
     # Apply base renaming for other cases
     tech = rename_techs(tech)
     return tech
 
+
+def rename_co2(tech):
+    """Map a CO2 carrier balance variable to a fuel-based emission category.
+
+    Categories
+    ----------
+    Coal | Oil | Gas | Bioenergy | Process emissions |
+    BECCS | Direct Air Capture | CO2 to atmosphere | Other
+    """
+    tl = tech.strip().lower()
+
+    if tl == "co2":
+        return "CO2 to atmosphere"
+
+    if tl == "dac":
+        return "Direct Air Capture"
+
+    if tl in ("solid biomass for industry cc", "urban central solid biomass chp cc"):
+        return "BECCS"
+
+    if tl in ("coal", "lignite", "industry coal emissions"):
+        return "Coal"
+
+    if (tl in ("oil", "oil emissions", "industry oil emissions")
+            or "transport oil" in tl
+            or "shipping oil" in tl):
+        return "Oil"
+
+    if (tl in ("gas emissions", "gas for industry", "gas for industry cc",
+               "ccgt", "ocgt", "co2 vent")
+            or "gas boiler" in tl
+            or "gas chp" in tl):
+        return "Gas"
+
+    if "biogas" in tl or "biomass" in tl:
+        return "Bioenergy"
+
+    if "process emissions" in tl:
+        return "Process emissions"
+
+    return tech
+
 def rename_h2o(tech):
-    # Check exact matches on original tech before renaming
     if tech == 'H2O pipeline':
-        return 'Desalination'        
-    if tech == 'desalination':
-        return 'Desalination' 
-    if tech == "H2O generator":
+        return 'Desalination'
+    elif tech == 'desalination':
+        return 'Desalination'
+    elif tech == "H2O generator":
         return "Desalination"
     return tech
 
@@ -1085,7 +1087,7 @@ colors = {
         "CH3OH Synthesis": "#836bad",
         "H2 DRI": '#1c3f52',
         "H2 export": "#4CC2A6",
-        "Navigation": "#39c1cd",
+        "Maritime": "#39c1cd",
         "Methanol steam reforming": "#39c1cd",
         'Steam reforming': '#d3c7ae',
     },
@@ -1094,7 +1096,7 @@ colors = {
         "Fossil fuel import": "#1c3f52",
         'FT Synthesis': '#a8508c',
         'Land transport': '#669db2',
-        "Navigation": "#39c1cd",
+        "Maritime": "#39c1cd",
         "Aviation": "#fce356",
         "Industry": '#f58220',
         "Commerce": "#b2d235",
@@ -1106,7 +1108,7 @@ colors = {
     },
     "gas": {
         'CH4 Synthesis': '#d3c7ae',
-        "Commerce": "#b2d235",
+        "Commerce": "#f08591",
         'Gas import': "#fce356",
         'Gas turbines': '#d3c7ae',
         'Residential': "#f58220",
@@ -1115,7 +1117,7 @@ colors = {
         "Biogas": "#b2d235",
         "Gas boiler": "#d6a67c",
     },
-    "co2": {
+    "co2 stored": {
         'Process emissions with CC': '#1c3f52',
         'Biomass for industry with CC': '#b2d235',
         "Biomass for CHP with CC": "#C2D05C",
@@ -1124,23 +1126,29 @@ colors = {
         'FT Synthesis': '#bb0056',
         "CH4 Synthesis": '#d3c7ae',
     },
+    "co2": {
+        "Coal": "#454545",
+        "Oil": "#C0C0C0",
+        "Gas": "#d3c7ae",
+        "Bioenergy": "#b2d235",
+        "Process emissions": "#f58220",
+        "BECCS": "#179c7d",
+        "Direct Air Capture": "#7c154d",
+        "CO2 to atmosphere": "#a6bbc8",
+    },
     "costs": {
-        "Ammonia export": '#bb0056',
-        "PtL export": '#7c154d',
-        "Solar": '#fdb913',
-        "Wind": '#005b7f',
+        "Solar": "#fdb913",
+        "Wind": "#005b7f",
         "H2 Electrolysis": "#179c7d",
         "H2 export": "#7c154d",
-        "NH3 Synthesis": '#fce356',
-        "Transmission line": '#4cc2a6',
-        "Battery": '#836bad',
-        "Oil": '#C0C0C0',
-        "Coal": '#454545',
-        "Gas": "#d3c7ae",
-        "Hydro": '#a6bbc8',
+        "Storage": "#836bad",
+        "Infrastructure": "#4cc2a6",
+        "Fossil fuels": "#454545",
+        "Bioenergy": "#b2d235",
         "Nuclear": "#bb0056",
-        'Carbon capture': '#7c154d',
-        "Other": "#a6bbc8",
+        "Geothermal": "#f58220",
+        "CO2 Sequestration": "#1c3f52",
+        "Other CAPEX": "#a6bbc8",
     }
 }
 
