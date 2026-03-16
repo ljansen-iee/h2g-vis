@@ -616,12 +616,15 @@ VOLUME_LABELS = {int(k): v for k, v in yaml_config["data"][_vl_key].items()}
 #   ?year=2035             – pre-selects the year (integer)
 #   ?dataset=Marginal+prices – pre-selects the dataset tab
 #   ?level=low,mid         – comma-separated scenario levels
+#   ?embed=true            – hides sidebar/header/footer for clean iframe embedding
+#                            (Streamlit Community Cloud hides toolbar/header/footer
+#                             automatically; this additionally hides the sidebar)
 #
 # Example iframe embed:
-#   <iframe src="https://your-app.com/?country=MA&year=2035" ...></iframe>
+#   <iframe src="https://your-app.com/?country=MA&year=2035&embed=true" ...></iframe>
 # The parent website can update the iframe src dynamically via JavaScript to
 # react to map-click events:
-#   iframe.src = `https://your-app.com/?country=${isoCode}&year=${year}`;
+#   iframe.src = `https://your-app.com/?country=${isoCode}&year=${year}&embed=true`;
 # ---------------------------------------------------------------------------
 
 _qp = st.query_params
@@ -653,6 +656,19 @@ _qp_levels = (
     if _qp_level_raw else []
 )
 _qp_levels = [lvl for lvl in _qp_levels if lvl in ["low", "mid", "high"]]
+
+# Embed mode — hide sidebar (Streamlit Cloud handles header/footer/toolbar)
+_qp_embed = _qp.get("embed", "").strip().lower() == "true"
+if _qp_embed:
+    st.markdown(
+        """
+        <style>
+        section[data-testid="stSidebar"] { display: none !important; }
+        [data-testid="collapsedControl"]  { display: none !important; }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
 # ---------------------------------------------------------------------------
 # Main area — controls

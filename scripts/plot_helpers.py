@@ -246,7 +246,7 @@ def prepare_dataframe(
     if drop_zero and 'value' in df_grouped.columns:
         df_grouped = df_grouped[abs(df_grouped["value"]) > zero_threshold]
 
-    df_grouped = df_grouped[df_grouped["variable"]!= "load shedding"]
+    df_grouped = df_grouped[df_grouped["variable"]!= "Load shedding"]
     
     return df_grouped
 
@@ -737,7 +737,7 @@ def rename_techs(label):
         "B2B": "Transmission lines",
         "Combined-Cycle Gas": "Gas turbines",
         "battery": "Battery",
-        "Load_Shedding": "Backup/load-shedding",
+        "load shedding": "Load shedding",
         "helmeth": "CH4 Synthesis",
         "H2 Fuel Cell": "H2 Fuel Cell",
         "OCGT": "Gas turbines",
@@ -822,18 +822,23 @@ def rename_techs(label):
 
 def rename_costs(tech):
     """Map a technology name to an aggregated cost category.
-
-    Categories
-    ----------
-    Solar | Wind | H2 Electrolysis | H2 export | Storage |
-    Infrastructure | Fossil fuels | Bioenergy | Nuclear | Geothermal |
-    CO2 Sequestration | Other CAPEX
     """
     tl = tech.strip().lower()
 
-    if tl in ("h2", "h2 export", "fischer-tropsch", "fischer-tropsch export",
-              "sabatier", "nh3 export", "haber-bosch"):
+    if tl in ("h2 fuel cell", "h2 turbine"):
+        return tl.title()
+
+    if tl in ("h2", "h2 export", "nh3 export"):
         return "H2 export"
+
+    if tl in ("fischer-tropsch", "fischer-tropsch export", "fischer-tropsch -> oil"):
+        return "FT Synthesis"
+
+    if tl == "sabatier":
+        return "CH4 Synthesis"
+
+    if tl == "haber-bosch":
+        return "NH3 Synthesis"
 
     if tl in ("solar", "solar rooftop", "solar csp", "solar pv") or "solar thermal" in tl:
         return "Solar"
@@ -850,17 +855,35 @@ def rename_costs(tech):
                       "h2o store", "h2o store charger", "h2o store discharger")):
         return "Storage"
 
-    if tl in ("ac", "electricity distribution grid", "h2 pipeline", "h2o pipeline"):
+    if tl in ("ac", "bev charger", "electricity distribution grid",
+              "h2 pipeline", "h2o pipeline"):
         return "Infrastructure"
 
     if (tl in ("coal", "lignite", "oil", "gas", "ccgt", "ocgt",
-               "gas for industry", "gas for industry cc")
+               "gas for industry",
+               "co2", "co2 vent", "process emissions")
             or "gas boiler" in tl
             or "gas chp" in tl):
         return "Fossil fuels"
 
+    if tl in ("dac", "process emissions cc", "gas for industry cc",
+              "solid biomass for industry cc", "urban central solid biomass chp cc"):
+        return "DAC/CC"
+
     if "biomass" in tl or "biogas" in tl:
         return "Bioenergy"
+
+    if tl in ("hydro", "ror"):
+        return "Hydro"
+
+    if tl in ("desalination", "seawater", "h2o generator"):
+        return "Desalination"
+
+    if "load shedding" in tl:
+        return "Load shedding"
+
+    if "heat pump" in tl or "resistive heater" in tl:
+        return "Electric heating"
 
     if tl == "nuclear":
         return "Nuclear"
@@ -871,8 +894,8 @@ def rename_costs(tech):
     if tl == "co2 stored":
         return "CO2 Sequestration"
 
-    return "Other CAPEX"
-    
+    return tl
+
 def rename_oil(tech):
     if "rail transport" in tech:
         return "Rail transport"
@@ -1074,6 +1097,7 @@ colors = {
         "FT Synthesis": "#7c154d",
         "Oil": "#1c3f52",
         "Geothermal": '#f08591',
+        "Load shedding": '#d3c7ae',
     },
     "hydrogen": {
         'H2 Electrolysis': "#179c7d",
@@ -1090,6 +1114,7 @@ colors = {
         "Maritime": "#39c1cd",
         "Methanol steam reforming": "#39c1cd",
         'Steam reforming': '#d3c7ae',
+        "Load shedding": '#d3c7ae',
     },
     "oil": {
         "Fuel import or CtL": "#1c3f52",
@@ -1105,6 +1130,7 @@ colors = {
         "Rail transport": '#008598',
         'CH4 Synthesis': '#d3c7ae',
         "FT Synthesis export": "#7c154d",
+        "Load shedding": '#d3c7ae',
     },
     "gas": {
         'CH4 Synthesis': '#d3c7ae',
@@ -1116,6 +1142,7 @@ colors = {
         'Industry with CC': "#005b7f",
         "Biogas": "#b2d235",
         "Gas boiler": "#d6a67c",
+        "Load shedding": '#d3c7ae',
     },
     "co2 stored": {
         'Process emissions with CC': '#1c3f52',
@@ -1141,14 +1168,23 @@ colors = {
         "Wind": "#005b7f",
         "H2 Electrolysis": "#179c7d",
         "H2 export": "#7c154d",
+        "FT Synthesis": "#a8508c",
+        "CH4 Synthesis": "#d3c7ae",
+        "NH3 Synthesis": "#fce356",
+        "H2 Fuel Cell": "#4CC2A6",
+        "H2 Turbine": "#f08591",
         "Storage": "#836bad",
         "Infrastructure": "#4cc2a6",
         "Fossil fuels": "#454545",
+        "DAC/CC": "#7c154d",
         "Bioenergy": "#b2d235",
+        "Hydro": "#669db2",
+        "Desalination": "#39c1cd",
+        "Electric heating": "#FCD80E",
         "Nuclear": "#bb0056",
         "Geothermal": "#f58220",
         "CO2 Sequestration": "#1c3f52",
-        "Other CAPEX": "#a6bbc8",
+        "Load shedding": '#d3c7ae',
     }
 }
 
