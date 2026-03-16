@@ -246,7 +246,7 @@ def prepare_dataframe(
     if drop_zero and 'value' in df_grouped.columns:
         df_grouped = df_grouped[abs(df_grouped["value"]) > zero_threshold]
 
-    df_grouped = df_grouped[df_grouped["variable"]!= "Load shedding"]
+    # df_grouped = df_grouped[df_grouped["variable"]!= "Load shedding"]
     
     return df_grouped
 
