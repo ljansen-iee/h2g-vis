@@ -203,7 +203,7 @@ def calculate_gwkm(n, selection=None, decimals=1, which="optimal"):
     return gwkm.round(decimals)
 
 
-nc_files = nc_files.query("clusters == '11'") # for testing, to be removed
+# nc_files = nc_files.query("clusters == '11'") # REMOVED: Debug filter that was filtering out all data```
 
 # initialise dicts per metric (market balance, optimal capacities, costs, marginal prices) with dataframes per bus_carrier or other groups
 
