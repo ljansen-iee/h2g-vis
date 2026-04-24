@@ -96,11 +96,15 @@ def extract_wildcards_from_filename(filename):
 def collect_files_from_directories(all_postnetworks_dir):
     """
     Collects all existing files from the directories specified in all_postnetworks_dir.
+    Filters to only include actual .nc files (excludes xarray metadata files).
     """
     files_in_folder = {}
     for run_name, path in all_postnetworks_dir.items():
         if path.exists() and path.is_dir():
-            files_in_folder[f"{run_name}"] = list(path.glob('*'))
+            # Filter to only .nc files (excludes xarray metadata like 'file.nc:Zone.Identifier')
+            files_in_folder[f"{run_name}"] = [
+                f for f in path.glob('*.nc') if f.is_file()
+            ]
         else:
             files_in_folder[f"{run_name}"] = []
 
