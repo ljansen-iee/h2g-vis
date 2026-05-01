@@ -83,7 +83,62 @@ def read_stats_dict(stats_name, path_dir, keys=[]):
         stats_dict[key].index.set_names(index_cols, inplace=True)
         print(f"Imported {key} from {path_dir / f'{stats_name}_{key}.csv'}")
     return stats_dict
+def to_csv_nafix(df, path, **kwargs):
+    if "na_rep" in kwargs:
+        del kwargs["na_rep"]
+    # Persist frames that have index rows even when they have zero value-columns.
+    # This keeps MultiIndex metadata round-trippable for downstream readers.
+    has_rows = len(df.index) > 0
+    if not df.empty or not df.columns.empty or has_rows:
+        return df.to_csv(path, **kwargs, na_rep=NA_VALUES[0])
+    else:
+        with open(path, "w") as fp:
+            pass
 
+
+def read_stats_dict(stats_name, path_dir, keys=[]):
+    stats_dict = {}
+    index_cols = ["run_name_prefix", "run_name", "country", "year", "simpl", "clusters", "ll", "opts", "sopts", "discountrate", "demand", "h2export"] #, "eopts"
+    for key in keys:
+        fpath = path_dir / f"{stats_name}_{key}.csv"
+
+        # Some historical outputs can be completely blank when a table had
+        # index rows but no value columns. Keep loading robust in that case.
+        if not fpath.exists() or fpath.stat().st_size == 0:
+            empty_idx = pd.MultiIndex.from_arrays([[] for _ in index_cols], names=index_cols)
+            stats_dict[key] = pd.DataFrame(index=empty_idx)
+            print(f"Imported {key} from {fpath} (empty)")
+            continue
+
+        try:
+            df = read_csv_nafix(fpath, index_col=index_cols)
+        except ValueError:
+            # Fallback for malformed legacy files: load without index_col and
+            # rebuild index if the index columns are present.
+            df = read_csv_nafix(fpath)
+            missing_idx_cols = [c for c in index_cols if c not in df.columns]
+            if missing_idx_cols:
+                empty_idx = pd.MultiIndex.from_arrays([[] for _ in index_cols], names=index_cols)
+                stats_dict[key] = pd.DataFrame(index=empty_idx)
+                print(f"Imported {key} from {fpath} (malformed, treated as empty)")
+                continue
+            df = df.set_index(index_cols)
+
+        if isinstance(df.index, pd.MultiIndex):
+            df.index.set_names(index_cols, inplace=True)
+        else:
+            # Defensive fallback to avoid hard failures in Streamlit rendering.
+            if len(df) == 0:
+                empty_idx = pd.MultiIndex.from_arrays([[] for _ in index_cols], names=index_cols)
+                df = pd.DataFrame(index=empty_idx)
+            else:
+                raise ValueError(
+                    f"Expected MultiIndex with levels {index_cols} in {fpath}, got {type(df.index).__name__}."
+                )
+
+        stats_dict[key] = df
+        print(f"Imported {key} from {fpath}")
+    return stats_dict
 
 def set_scen_col_H2G(df, index_levels_to_drop=[]):
     """
