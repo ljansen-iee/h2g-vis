@@ -239,7 +239,15 @@ pypsa.options.params.statistics.round = 6
 
 for nc_files_idx in nc_files.index:
     
-    n = pypsa.Network(nc_files.at[nc_files_idx,"file"])
+    file_path = str(nc_files.at[nc_files_idx, "file"])
+    
+    try:
+        n = pypsa.Network(file_path)
+    except Exception as e:
+        print(f"WARNING: Could not load network file {file_path}")
+        print(f"  Error: {type(e).__name__}: {str(e)[:100]}...")
+        print(f"  Skipping this file.")
+        continue
 
     # energy balance per bus_carrier in TWh
     for bus_carrier in balance_dict.keys():
